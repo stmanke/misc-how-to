@@ -1,0 +1,112 @@
+Building: 
+The C# solution must be built matching the architecture of the native DLLs being referenced.
+AnyCPU won't work as a build flavor.
+
+
+InterOp Notes:
+IntPtr.Zero equivalent to nullptr, ref: https://stackoverflow.com/questions/2509984/how-to-pass-null-pointer-to-win32-api-in-c-sharp-net
+
+IntPtr is a stand-in for any type of C/C++ pointer.
+
+When the native API is expecting a pointer to data (to fill in or update), the managed prototype must use ref keyword.
+i.e., DWORD WINAPI FooCreate(WORD wVersionRequested, HANDLE* pBar); translates to:
+  private static extern ulong FooCreate(uint wVersionRequested, ref IntPtr bar);
+
+If the native API expects a wchar, wchar_t or wchar* or LPCWSTR, or... decorate the DllImport attribute with CharSet = CharSet.Unicode
+https://docs.microsoft.com/en-us/dotnet/framework/interop/msgbox-sample
+
+If the native API returns a success code and fills a string, easiest thing is to map that param as a StringBuilder
+
+Nice table for data conversions
+https://www.codeproject.com/Articles/9714/Win-API-C-to-NET
+
+
+Dealing with structs:
+https://docs.microsoft.com/en-us/dotnet/framework/interop/marshaling-classes-structures-and-unions
+https://limbioliong.wordpress.com/2011/08/19/passing-a-pointer-to-a-structure-from-c-to-c-part-1/
+
+Passing pointer to struct, i.e., useful if the C API takes void* to a struct and an enum indicating type of struct:
+https://stackoverflow.com/questions/17034728/passing-a-pointer-of-c-sharp-structure-to-c-api
+the C# code in the question works, with the addition of Marshal.FreeHGlobal and [pointer] = IntPtr.Zero to avoid memory leak
+
+  var dataRequested = (ACQUIRE_FOO)Marshal.PtrToStructure(pvAcquireValues, typeof(ACQUIRE_FOO));
+
+Don't need to free dataRequested because purely managed code construct.
+
+Pointers embedded in native structs:
+
+c++:
+typedef struct ACQUIRE_FOO_
+{
+    LPCWSTR Namespace;
+    LPCWSTR Query;
+    DWORD* TimeoutInSeconds; // NULL means infinite timeout
+} ACQUIRE_FOO, *PACQUIRE_FOO;
+
+c#
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+public struct ACQUIRE_FOO
+{
+    public string Namespace;
+    public string Query;
+    public IntPtr TimeoutInSeconds; // NULL means infinite timeout
+}
+public FooBar(AQUIRE_FOO thing)
+{
+    string name = thing.Namespace;
+    string query = thing.Query
+    uint timeout = (uint)Marshal.PtrToStructure(thing.TimeoutInSeconds, typeof(uint));
+
+    // do stuff with thing
+}
+
+
+Callbacks:
+Create a delegate in the namespace -- not within a class! Delegate signature must match what API expects.
+Within the class, create an instance of the delegate PASSING IN the name of the local function that implements it
+https://docs.microsoft.com/en-us/dotnet/framework/interop/how-to-implement-callback-functions
+
+file: FooThing.cs
+namespace Foo
+{
+  using System.Runtime.InteropServices;
+
+  public delegate int FooBarProc(IntPtr pThing);
+
+  public sealed partial class FooThing
+  {
+    private FooBarProc getFooCallback;
+
+    public FooThing()
+    {
+    getFooCallback = new FooBarProc(GetData);
+    }
+
+    private int GetData(IntPtr pThing)
+    {
+      throw new NotYetImplimentedException;
+    }
+  }
+}
+
+file: FooThingImports.cs
+namespace Foo
+{ 
+  using System.Runtime.InteropServices;
+
+  public sealed partial class FooThing
+  {
+    [DllImport("[PathToDll]")]
+    private static extern ulong FooCreate1(uint wVersionRequested, ref IntPtr pThing, FooBarProc pfnCallback); 
+  }
+}
+
+
+
+
+Misc. References:
+https://bytes.com/topic/c-sharp/answers/678593-how-import-function-c-dll-use-them-c-code
+https://www.displayfusion.com/Discussions/View/converting-c-data-types-to-c/?ID=38db6001-45e5-41a3-ab39-8004450204b3
+https://docs.microsoft.com/en-us/dotnet/framework/interop/marshaling-data-with-platform-invoke
+https://stackoverflow.com/questions/3264789/how-to-convert-a-void-to-a-type-that-can-be-used-in-c-interoperability-betwee
+https://stackoverflow.com/questions/11671385/unmanaged-dll-causing-accessviolationexception
