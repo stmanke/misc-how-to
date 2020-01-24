@@ -2,6 +2,8 @@ using System;
 
 namespace GetDebugStrings
 {
+    // based on https://www.codeproject.com/Articles/13345/DbMon-NET-A-simple-NET-OutputDebugString-capturer
+    // more background on OutputDebugString: http://www.unixwiz.net/techtips/outputdebugstring.html
     public class Program
     {
         public static void Main()
